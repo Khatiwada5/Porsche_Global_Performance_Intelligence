@@ -20,6 +20,8 @@ Porsche's internal operating data is private, but executives, analysts, and port
 
 The generated CSV lives at `data/porsche_global_performance_synthetic.csv`.
 
+A formatted Excel workbook is also available at `data/Porsche_Performance_Data.xlsx` with separate sheets for global sales, regional breakdown, powertrain mix, and forecasting data.
+
 Columns included:
 
 - `Year`
@@ -65,7 +67,7 @@ The global annual totals are anchored to Porsche's public delivery figures, incl
 Install the Python dependencies:
 
 ```bash
-pip install pandas numpy plotly
+pip install pandas numpy plotly openpyxl
 ```
 
 Generate the dashboard and CSV:
@@ -75,6 +77,11 @@ python generate_dashboard.py
 ```
 
 Open `index.html` in a browser. No server or external JavaScript is required because Plotly is embedded directly in the file.
+
+The script also exports:
+
+- `data/porsche_global_performance_synthetic.csv`
+- `data/Porsche_Performance_Data.xlsx`
 
 ## GitHub Pages
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from openpyxl.styles import Alignment, Font, PatternFill
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.offline.offline import get_plotlyjs
@@ -14,6 +15,7 @@ from plotly.subplots import make_subplots
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 CSV_PATH = DATA_DIR / "porsche_global_performance_synthetic.csv"
+EXCEL_PATH = DATA_DIR / "Porsche_Performance_Data.xlsx"
 HTML_PATH = ROOT / "index.html"
 
 PORSCHE_RED = "#D5001C"
@@ -23,6 +25,10 @@ CARD = "#14141C"
 TEXT = "#FFFFFF"
 MUTED = "#B8B8C8"
 GRID = "rgba(255,255,255,0.08)"
+
+REPO_URL = "https://github.com/Khatiwada5/Porsche_Global_Performance_Intelligence"
+LIVE_DATA_URL = f"{REPO_URL}/raw/main/data/Porsche_Performance_Data.xlsx"
+SOURCE_URL = f"{REPO_URL}/blob/main/generate_dashboard.py"
 
 
 def weighted_alloc(total: int, weights: dict[str, float]) -> dict[str, int]:
@@ -198,6 +204,73 @@ def plot_html(fig: go.Figure) -> str:
     return pio.to_html(fig, include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "responsive": True})
 
 
+def build_forecast_frame(df: pd.DataFrame) -> pd.DataFrame:
+    yearly_total = df.groupby("Year", as_index=False).agg(
+        actual_units=("Units Sold", "sum"),
+        actual_revenue_eur_millions=("Revenue in EUR millions", "sum"),
+    )
+    years = yearly_total["Year"].to_numpy()
+    units = yearly_total["actual_units"].to_numpy()
+    coef = np.polyfit(years, units, deg=1)
+    forecast_years = np.arange(2018, 2028)
+    baseline = np.polyval(coef, forecast_years)
+    residual_std = float(np.std(units - np.polyval(coef, years)))
+
+    forecast_df = pd.DataFrame(
+        {
+            "Year": forecast_years,
+            "Actual Units": [int(yearly_total.loc[yearly_total["Year"] == year, "actual_units"].iloc[0]) if year in set(years) else np.nan for year in forecast_years],
+            "Regression Baseline Units": np.round(baseline, 0),
+            "Confidence Lower Units": np.round(baseline - residual_std * 1.65, 0),
+            "Confidence Upper Units": np.round(baseline + residual_std * 1.65, 0),
+            "Conservative Scenario Units": np.nan,
+            "Optimistic Scenario Units": np.nan,
+        }
+    )
+    future_years = np.arange(2025, 2028)
+    conservative = np.polyval(coef, future_years) * np.array([0.985, 0.995, 1.005])
+    optimistic = np.polyval(coef, future_years) * np.array([1.025, 1.055, 1.085])
+    forecast_df.loc[forecast_df["Year"].isin(future_years), "Conservative Scenario Units"] = np.round(conservative, 0)
+    forecast_df.loc[forecast_df["Year"].isin(future_years), "Optimistic Scenario Units"] = np.round(optimistic, 0)
+    return forecast_df
+
+
+def export_excel(df: pd.DataFrame, path: Path) -> None:
+    regional = df.groupby(["Year", "Region"], as_index=False).agg(
+        Units_Sold=("Units Sold", "sum"),
+        Revenue_EUR_Millions=("Revenue in EUR millions", "sum"),
+    )
+    powertrain = df.groupby(["Year", "Model", "Electric vs ICE vs Hybrid classification"], as_index=False).agg(
+        Units_Sold=("Units Sold", "sum"),
+        Revenue_EUR_Millions=("Revenue in EUR millions", "sum"),
+    )
+    forecast_df = build_forecast_frame(df)
+
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Global Sales", index=False)
+        regional.to_excel(writer, sheet_name="Regional Breakdown", index=False)
+        powertrain.to_excel(writer, sheet_name="Powertrain Mix", index=False)
+        forecast_df.to_excel(writer, sheet_name="Forecasting Data", index=False)
+
+        workbook = writer.book
+        for worksheet in workbook.worksheets:
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(fill_type="solid", fgColor="D5001C")
+            stripe_fill = PatternFill(fill_type="solid", fgColor="F2F2F2")
+            for cell in worksheet[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center")
+            for row_idx, row in enumerate(worksheet.iter_rows(min_row=2), start=2):
+                if row_idx % 2 == 0:
+                    for cell in row:
+                        cell.fill = stripe_fill
+            for column in worksheet.columns:
+                max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in column)
+                worksheet.column_dimensions[column[0].column_letter].width = min(max(max_length + 2, 12), 42)
+            worksheet.freeze_panes = "A2"
+
+
 def make_dashboard(df: pd.DataFrame) -> str:
     yearly_model = df.groupby(["Year", "Model"], as_index=False)["Units Sold"].sum()
     yearly_total = df.groupby("Year", as_index=False).agg(
@@ -307,14 +380,14 @@ def make_dashboard(df: pd.DataFrame) -> str:
     }
 
     kpis = [
-        ("Total Revenue 2024", f"EUR {revenue_2024:,.0f}M", "Synthetic estimate from unit mix and ATP"),
-        ("YoY Growth", f"{yoy_growth:+.1f}%", "Revenue growth versus 2023"),
-        ("Best Selling Model", best_model, "2024 global deliveries"),
-        ("Fastest Growing Region", fastest_region, f"{region_growth.loc[fastest_region, 'growth'] * 100:+.1f}% revenue YoY"),
+        ("01", "Total Revenue 2024", f"EUR {revenue_2024:,.0f}M", "Synthetic estimate from unit mix and ATP"),
+        ("02", "YoY Growth", f"{yoy_growth:+.1f}%", "Revenue growth versus 2023"),
+        ("03", "Best Selling Model", best_model, "2024 global deliveries"),
+        ("04", "Fastest Growing Region", fastest_region, f"{region_growth.loc[fastest_region, 'growth'] * 100:+.1f}% revenue YoY"),
     ]
     kpi_html = "\n".join(
-        f"<article class='kpi-card'><p>{label}</p><strong>{value}</strong><span>{sub}</span></article>"
-        for label, value, sub in kpis
+        f"<article class='kpi-card'><div class='kpi-marker'>{marker}</div><p>{label}</p><strong>{value}</strong><span>{sub}</span></article>"
+        for marker, label, value, sub in kpis
     )
 
     recommendations = [
@@ -325,8 +398,24 @@ def make_dashboard(df: pd.DataFrame) -> str:
     ]
 
     recommendation_html = "\n".join(
-        f"<article class='recommendation'><div>{i}</div><h3>{title}</h3><p>{rationale}</p><strong>Expected impact:</strong><span>{impact}</span></article>"
+        f"<article class='recommendation'><div class='rec-number'>{i:02d}</div><div><h3>{title}</h3><p>{rationale}</p><span class='impact-badge'>Expected Impact</span><strong>{impact}</strong></div></article>"
         for i, (title, rationale, impact) in enumerate(recommendations, start=1)
+    )
+
+    data_dictionary = [
+        ("Year", "Integer", "Reporting year from 2018 through 2024."),
+        ("Model", "Text", "Porsche model line used for portfolio analysis."),
+        ("Region", "Text", "Primary sales region used for delivery and revenue allocation."),
+        ("Units Sold", "Integer", "Synthetic deliveries anchored to public annual Porsche totals."),
+        ("Revenue in EUR millions", "Float", "Estimated revenue from units sold and modeled transaction price."),
+        ("Average Transaction Price in EUR", "Float", "Modeled average transaction price by model, region, year, and powertrain."),
+        ("Customer Satisfaction Score (1-10)", "Float", "Synthetic satisfaction score reflecting model and regional assumptions."),
+        ("Dealer Count", "Integer", "Estimated dealer count by region and year."),
+        ("Electric vs ICE vs Hybrid classification", "Text", "Powertrain category used in the electric transition analysis."),
+    ]
+    dictionary_rows = "\n".join(
+        f"<tr><td>{column}</td><td>{dtype}</td><td>{description}</td></tr>"
+        for column, dtype, description in data_dictionary
     )
 
     plotly_bundle = f"<script>{get_plotlyjs()}</script>"
@@ -347,6 +436,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
       --text: {TEXT};
       --muted: {MUTED};
       --line: rgba(255,255,255,0.12);
+      --green: #22C55E;
     }}
     * {{ box-sizing: border-box; }}
     html {{ scroll-behavior: smooth; }}
@@ -369,6 +459,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
     }}
     .wrap {{ width: min(1180px, calc(100% - 36px)); margin: 0 auto; }}
     .wordmark {{ font-weight: 900; letter-spacing: 0.18em; color: var(--text); font-size: 14px; margin-bottom: 42px; }}
+    .wordmark::after {{ content: ""; display: block; width: 96px; height: 3px; margin-top: 14px; background: var(--red); box-shadow: 0 0 22px rgba(213,0,28,0.55); }}
     h1 {{ font-size: clamp(42px, 8vw, 92px); line-height: 0.94; margin: 0; max-width: 980px; letter-spacing: 0; }}
     .hero-copy {{ color: var(--muted); max-width: 760px; font-size: 18px; line-height: 1.65; margin: 26px 0 0; }}
     nav {{
@@ -377,7 +468,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
       z-index: 20;
       backdrop-filter: blur(16px);
       background: rgba(10,10,15,0.88);
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid rgba(213,0,28,0.38);
       overflow-x: auto;
     }}
     nav .wrap {{ display: flex; gap: 8px; padding: 12px 0; }}
@@ -389,48 +480,69 @@ def make_dashboard(df: pd.DataFrame) -> str:
       border-bottom: 2px solid transparent;
       font-size: 13px;
       font-weight: 700;
+      transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
     }}
-    nav a:hover {{ color: var(--text); border-color: var(--red); }}
+    nav a:hover, nav a.active {{ color: var(--text); border-color: var(--red); background: rgba(213,0,28,0.12); }}
     main {{ padding: 34px 0 72px; }}
-    section {{ scroll-margin-top: 74px; margin: 34px 0 56px; }}
+    section {{ scroll-margin-top: 74px; margin: 34px 0 56px; opacity: 0; transform: translateY(24px); transition: opacity 700ms ease, transform 700ms ease; }}
+    section.visible {{ opacity: 1; transform: translateY(0); }}
     .section-title {{ display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 18px; }}
-    h2 {{ font-size: 28px; margin: 0; }}
+    h2 {{ font-size: 28px; margin: 0; color: var(--text); position: relative; padding-left: 16px; }}
+    h2::before {{ content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; border-radius: 999px; background: var(--red); box-shadow: 0 0 18px rgba(213,0,28,0.62); }}
     .section-title p {{ color: var(--muted); margin: 0; max-width: 560px; line-height: 1.5; }}
-    .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }}
-    .kpi-card, .chart-card, .recommendation {{
+    .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }}
+    .kpi-card, .chart-card, .recommendation, .data-card {{
       background: var(--card);
       border: 1px solid var(--line);
       box-shadow: 0 18px 50px rgba(0,0,0,0.32);
       border-radius: 8px;
     }}
-    .kpi-card {{ padding: 22px; border-top: 3px solid var(--red); min-height: 158px; }}
-    .kpi-card p {{ margin: 0 0 16px; color: var(--muted); font-size: 13px; text-transform: uppercase; font-weight: 800; }}
-    .kpi-card strong {{ display: block; font-size: 30px; line-height: 1.08; margin-bottom: 14px; }}
-    .kpi-card span {{ color: var(--gold); font-size: 13px; line-height: 1.4; }}
-    .chart-card {{ padding: 10px; margin-bottom: 18px; }}
+    .kpi-card {{ position: relative; padding: 30px; border: 1px solid rgba(213,0,28,0.34); border-top: 4px solid var(--red); min-height: 214px; overflow: hidden; transition: transform 240ms ease, border-color 240ms ease, box-shadow 240ms ease; }}
+    .kpi-card::after {{ content: ""; position: absolute; inset: auto -32px -44px auto; width: 120px; height: 120px; border-radius: 999px; background: rgba(213,0,28,0.16); filter: blur(14px); }}
+    .kpi-card:hover {{ transform: translateY(-6px); border-color: var(--red); box-shadow: 0 26px 72px rgba(213,0,28,0.24), 0 18px 50px rgba(0,0,0,0.38); }}
+    .kpi-marker {{ color: var(--gold); font-size: 12px; font-weight: 900; letter-spacing: 0.12em; margin-bottom: 28px; }}
+    .kpi-card p {{ margin: 0 0 18px; color: var(--muted); font-size: 13px; text-transform: uppercase; font-weight: 900; }}
+    .kpi-card strong {{ display: block; color: var(--red); font-size: clamp(34px, 3.1vw, 52px); line-height: 1; margin-bottom: 16px; text-shadow: 0 0 26px rgba(213,0,28,0.28); }}
+    .kpi-card span {{ color: var(--gold); font-size: 13px; line-height: 1.45; }}
+    .chart-card {{ padding: 10px; margin-bottom: 18px; border-color: rgba(213,0,28,0.2); }}
     .chart-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
     details {{
       background: rgba(255,255,255,0.04);
       border: 1px solid var(--line);
-      border-left: 3px solid var(--gold);
+      border-left: 3px solid var(--red);
       border-radius: 8px;
       padding: 14px 16px;
       margin-top: 12px;
     }}
-    summary {{ cursor: pointer; font-weight: 800; color: var(--gold); }}
+    summary {{ cursor: pointer; font-weight: 800; color: var(--red); }}
     details p {{ color: var(--muted); line-height: 1.65; margin: 12px 0 0; }}
+    .data-card {{ border-left: 5px solid var(--red); padding: clamp(20px, 3vw, 34px); }}
+    .data-card p {{ color: var(--muted); line-height: 1.7; max-width: 880px; margin: 0 0 22px; }}
+    .data-actions {{ display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }}
+    .data-actions a {{ display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--red); border-radius: 8px; color: var(--text); font-weight: 900; text-decoration: none; background: transparent; transition: background 220ms ease, transform 220ms ease, box-shadow 220ms ease; }}
+    .data-actions a:hover {{ background: var(--red); transform: translateY(-2px); box-shadow: 0 16px 34px rgba(213,0,28,0.24); }}
+    .data-table-wrap {{ overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }}
+    .data-table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
+    .data-table th {{ background: var(--red); color: var(--text); text-align: left; padding: 13px 14px; font-size: 13px; text-transform: uppercase; }}
+    .data-table td {{ padding: 13px 14px; border-top: 1px solid var(--line); color: var(--muted); vertical-align: top; }}
+    .data-table td:first-child {{ color: var(--text); font-weight: 800; }}
     .recommendations {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }}
-    .recommendation {{ padding: 22px; position: relative; overflow: hidden; }}
-    .recommendation div {{ color: var(--red); font-size: 42px; font-weight: 900; }}
-    .recommendation h3 {{ margin: 4px 0 10px; font-size: 20px; }}
-    .recommendation p, .recommendation span {{ color: var(--muted); line-height: 1.62; }}
-    .recommendation strong {{ display: block; color: var(--gold); margin: 16px 0 6px; }}
+    .recommendation {{ display: grid; grid-template-columns: 70px 1fr; gap: 18px; padding: 26px; position: relative; overflow: hidden; border-left: 5px solid var(--red); }}
+    .rec-number {{ color: var(--red); font-size: 44px; line-height: 1; font-weight: 900; }}
+    .recommendation h3 {{ margin: 0 0 12px; font-size: 21px; font-weight: 900; }}
+    .recommendation p {{ color: var(--muted); font-style: italic; line-height: 1.62; margin-bottom: 18px; }}
+    .impact-badge {{ display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; color: #06120A; background: var(--green); font-size: 12px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; }}
+    .recommendation strong {{ display: block; color: var(--text); line-height: 1.58; font-weight: 700; }}
     footer {{ border-top: 1px solid var(--line); padding: 26px 0; color: var(--muted); font-size: 13px; }}
+    @media (prefers-reduced-motion: reduce) {{
+      section, .kpi-card, .data-actions a {{ transition: none; }}
+    }}
     @media (max-width: 900px) {{
       .kpi-grid, .chart-grid, .recommendations {{ grid-template-columns: 1fr; }}
       header {{ min-height: 64vh; }}
       .section-title {{ display: block; }}
       .section-title p {{ margin-top: 10px; }}
+      .recommendation {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -450,6 +562,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
       <a href="#profitability">Profitability</a>
       <a href="#electric">Electric Transition</a>
       <a href="#forecasting">Forecasting</a>
+      <a href="#data-source">Data Source</a>
       <a href="#recommendations">Recommendations</a>
     </div>
   </nav>
@@ -495,12 +608,53 @@ def make_dashboard(df: pd.DataFrame) -> str:
       <details open><summary>Business Insight</summary><p>{insights["forecast"]}</p></details>
     </section>
 
+    <section id="data-source">
+      <div class="section-title"><h2>Data & Methodology</h2><p>Transparent source data, generation logic, and field definitions for auditability.</p></div>
+      <div class="data-card">
+        <p>This dashboard uses a synthetic dataset built from Porsche's publicly reported annual delivery figures for 2018-2024. Model, region, revenue, satisfaction, dealer, powertrain, and forecast values are generated with realistic assumptions so the dashboard can be shared publicly without private company data.</p>
+        <div class="data-actions">
+          <a href="{LIVE_DATA_URL}" target="_blank" rel="noreferrer">Download Excel Workbook</a>
+          <a href="{SOURCE_URL}" target="_blank" rel="noreferrer">View Python Source</a>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Column Name</th><th>Data Type</th><th>Description</th></tr></thead>
+            <tbody>{dictionary_rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section id="recommendations">
       <div class="section-title"><h2>Strategic Recommendations</h2><p>Consulting-style actions tied directly to the dashboard evidence.</p></div>
       <div class="recommendations">{recommendation_html}</div>
     </section>
   </main>
   <footer><div class="wrap">Generated with Python, Pandas, Plotly, and HTML/CSS. Dataset is synthetic and for portfolio/business intelligence demonstration only.</div></footer>
+  <script>
+    const sections = Array.from(document.querySelectorAll("main section[id]"));
+    const navLinks = Array.from(document.querySelectorAll("nav a"));
+
+    const revealObserver = new IntersectionObserver((entries) => {{
+      entries.forEach((entry) => {{
+        if (entry.isIntersecting) entry.target.classList.add("visible");
+      }});
+    }}, {{ threshold: 0.16 }});
+
+    sections.forEach((section) => revealObserver.observe(section));
+
+    const activeObserver = new IntersectionObserver((entries) => {{
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      const id = visible.target.id;
+      navLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${{id}}`));
+    }}, {{ rootMargin: "-42% 0px -48% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] }});
+
+    sections.forEach((section) => activeObserver.observe(section));
+    if (sections[0]) sections[0].classList.add("visible");
+  </script>
 </body>
 </html>"""
 
@@ -509,8 +663,10 @@ def main() -> None:
     DATA_DIR.mkdir(exist_ok=True)
     df = build_dataset()
     df.to_csv(CSV_PATH, index=False)
+    export_excel(df, EXCEL_PATH)
     HTML_PATH.write_text(make_dashboard(df), encoding="utf-8")
     print(f"Wrote {CSV_PATH}")
+    print(f"Wrote {EXCEL_PATH}")
     print(f"Wrote {HTML_PATH}")
 
 
