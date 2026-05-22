@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -39,6 +40,16 @@ def sports_car_svg(class_name: str = "sports-car", width: int = 60, height: int 
         <path fill="currentColor" d="M31.6 35.7a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Zm58 0a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Z" fill-opacity="0.28"/>
         <path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" d="M16.8 34.2c13.6-6.5 26.2-7.6 41.7-6.3 13.9 1.1 28.5-1.3 42.5-3.2"/>
     </svg>"""
+
+
+def favicon_href() -> str:
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 56">
+        <rect width="120" height="56" rx="12" fill="{BG}"/>
+        <path fill="{PORSCHE_RED}" d="M9 36.6c6.9-7.8 15.8-12.4 29.6-13.7 7.9-8.7 18.7-13.5 31.5-13.5 10.2 0 18.7 3.1 27.2 10.3 7.6.8 13.2 3 17.9 7.4 1.5 1.4 1 3.9-.9 4.5l-9.9 3.2c-1.4.5-2.9-.1-3.7-1.4-2.3-3.8-6.4-6.1-11.1-6.1-5.9 0-10.8 3.8-12.5 9.1H44.2c-1.7-5.3-6.7-9.1-12.6-9.1-5.7 0-10.6 3.6-12.4 8.7-.5 1.5-2 2.4-3.5 2.1l-5.4-1c-1.1-.2-1.7-1.5-.9-2.5Z"/>
+        <path fill="{PORSCHE_RED}" d="M43.9 21.9c7-6 15.8-9.1 26.1-9.1 7.9 0 14.5 2.1 20.4 6.6l-14.7 1.7c-12.8 1.5-22.7 1.8-31.8.8Z" opacity="0.72"/>
+        <path fill="{PORSCHE_RED}" d="M31.6 31.1a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Zm58 0a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Z"/>
+    </svg>"""
+    return f"data:image/svg+xml,{quote(svg)}"
 
 
 def weighted_alloc(total: int, weights: dict[str, float]) -> dict[str, int]:
@@ -441,6 +452,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
     header_car = sports_car_svg("header-car", 60, 28)
     section_car = sports_car_svg("section-car", 120, 56)
     footer_car = sports_car_svg("footer-car", 92, 42)
+    favicon = favicon_href()
 
     return f"""<!doctype html>
 <html lang="en">
@@ -448,6 +460,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Porsche Global Performance Intelligence</title>
+  <link rel="icon" type="image/svg+xml" href="{favicon}">
   {plotly_bundle}
   <style>
     :root {{
