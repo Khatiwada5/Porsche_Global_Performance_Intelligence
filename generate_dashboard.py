@@ -31,6 +31,16 @@ LIVE_DATA_URL = f"{REPO_URL}/raw/main/data/Porsche_Performance_Data.xlsx"
 SOURCE_URL = f"{REPO_URL}/blob/main/generate_dashboard.py"
 
 
+def sports_car_svg(class_name: str = "sports-car", width: int = 60, height: int = 28) -> str:
+    return f"""<svg class="{class_name}" width="{width}" height="{height}" viewBox="0 0 120 56" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+        <path fill="currentColor" d="M9 36.6c6.9-7.8 15.8-12.4 29.6-13.7 7.9-8.7 18.7-13.5 31.5-13.5 10.2 0 18.7 3.1 27.2 10.3 7.6.8 13.2 3 17.9 7.4 1.5 1.4 1 3.9-.9 4.5l-9.9 3.2c-1.4.5-2.9-.1-3.7-1.4-2.3-3.8-6.4-6.1-11.1-6.1-5.9 0-10.8 3.8-12.5 9.1H44.2c-1.7-5.3-6.7-9.1-12.6-9.1-5.7 0-10.6 3.6-12.4 8.7-.5 1.5-2 2.4-3.5 2.1l-5.4-1c-1.1-.2-1.7-1.5-.9-2.5Z"/>
+        <path fill="currentColor" d="M43.9 21.9c7-6 15.8-9.1 26.1-9.1 7.9 0 14.5 2.1 20.4 6.6l-14.7 1.7c-12.8 1.5-22.7 1.8-31.8.8Z" opacity="0.72"/>
+        <path fill="currentColor" d="M31.6 31.1a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Zm58 0a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Z"/>
+        <path fill="currentColor" d="M31.6 35.7a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Zm58 0a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Z" fill-opacity="0.28"/>
+        <path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" d="M16.8 34.2c13.6-6.5 26.2-7.6 41.7-6.3 13.9 1.1 28.5-1.3 42.5-3.2"/>
+    </svg>"""
+
+
 def weighted_alloc(total: int, weights: dict[str, float]) -> dict[str, int]:
     raw = {key: total * weight for key, weight in weights.items()}
     floors = {key: int(math.floor(value)) for key, value in raw.items()}
@@ -380,15 +390,24 @@ def make_dashboard(df: pd.DataFrame) -> str:
     }
 
     kpis = [
-        ("01", "Total Revenue 2024", f"EUR {revenue_2024:,.0f}M", "Synthetic estimate from unit mix and ATP"),
-        ("02", "YoY Growth", f"{yoy_growth:+.1f}%", "Revenue growth versus 2023"),
-        ("03", "Best Selling Model", best_model, "2024 global deliveries"),
-        ("04", "Fastest Growing Region", fastest_region, f"{region_growth.loc[fastest_region, 'growth'] * 100:+.1f}% revenue YoY"),
+        ("01", "Total Revenue 2024", f"EUR {revenue_2024:,.0f}M", "Synthetic estimate from unit mix and ATP", {"target": round(revenue_2024), "prefix": "EUR ", "suffix": "M", "decimals": 0, "signed": "false"}),
+        ("02", "YoY Growth", f"{yoy_growth:+.1f}%", "Revenue growth versus 2023", {"target": round(yoy_growth, 1), "prefix": "", "suffix": "%", "decimals": 1, "signed": "true"}),
+        ("03", "Best Selling Model", best_model, "2024 global deliveries", None),
+        ("04", "Fastest Growing Region", fastest_region, f"{region_growth.loc[fastest_region, 'growth'] * 100:+.1f}% revenue YoY", None),
     ]
-    kpi_html = "\n".join(
-        f"<article class='kpi-card'><div class='kpi-marker'>{marker}</div><p>{label}</p><strong>{value}</strong><span>{sub}</span></article>"
-        for marker, label, value, sub in kpis
-    )
+    kpi_cards = []
+    for marker, label, value, sub, count_meta in kpis:
+        attrs = ""
+        if count_meta:
+            attrs = (
+                f" data-count-target='{count_meta['target']}'"
+                f" data-count-prefix='{count_meta['prefix']}'"
+                f" data-count-suffix='{count_meta['suffix']}'"
+                f" data-count-decimals='{count_meta['decimals']}'"
+                f" data-count-signed='{count_meta['signed']}'"
+            )
+        kpi_cards.append(f"<article class='kpi-card'><div class='kpi-marker'>{marker}</div><p>{label}</p><strong{attrs}>{value}</strong><span>{sub}</span></article>")
+    kpi_html = "\n".join(kpi_cards)
 
     recommendations = [
         ("Prioritize Electrified SUV Scale", "Macan Electric and Cayenne Hybrid are the clearest bridge between Porsche's volume base and its EV transition. Protect allocation for North America and Europe where revenue per unit is strongest.", "Higher EV penetration without abandoning the models that fund operating leverage."),
@@ -419,6 +438,9 @@ def make_dashboard(df: pd.DataFrame) -> str:
     )
 
     plotly_bundle = f"<script>{get_plotlyjs()}</script>"
+    header_car = sports_car_svg("header-car", 60, 28)
+    section_car = sports_car_svg("section-car", 120, 56)
+    footer_car = sports_car_svg("footer-car", 92, 42)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -458,7 +480,9 @@ def make_dashboard(df: pd.DataFrame) -> str:
         var(--bg);
     }}
     .wrap {{ width: min(1180px, calc(100% - 36px)); margin: 0 auto; }}
-    .wordmark {{ font-weight: 900; letter-spacing: 0.18em; color: var(--text); font-size: 14px; margin-bottom: 42px; }}
+    .brandline {{ display: inline-flex; align-items: center; gap: 16px; margin-bottom: 42px; color: var(--red); }}
+    .header-car {{ flex: 0 0 auto; filter: drop-shadow(0 0 14px rgba(213,0,28,0.42)); }}
+    .wordmark {{ font-weight: 900; letter-spacing: 0.18em; color: var(--text); font-size: 14px; }}
     .wordmark::after {{ content: ""; display: block; width: 96px; height: 3px; margin-top: 14px; background: var(--red); box-shadow: 0 0 22px rgba(213,0,28,0.55); }}
     h1 {{ font-size: clamp(42px, 8vw, 92px); line-height: 0.94; margin: 0; max-width: 980px; letter-spacing: 0; }}
     .hero-copy {{ color: var(--muted); max-width: 760px; font-size: 18px; line-height: 1.65; margin: 26px 0 0; }}
@@ -473,6 +497,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
     }}
     nav .wrap {{ display: flex; gap: 8px; padding: 12px 0; }}
     nav a {{
+      position: relative;
       color: var(--muted);
       text-decoration: none;
       white-space: nowrap;
@@ -482,10 +507,14 @@ def make_dashboard(df: pd.DataFrame) -> str:
       font-weight: 700;
       transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
     }}
-    nav a:hover, nav a.active {{ color: var(--text); border-color: var(--red); background: rgba(213,0,28,0.12); }}
+    nav a::after {{ content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; background: var(--red); transform: scaleX(0); transform-origin: center; transition: transform 220ms ease; }}
+    nav a:hover, nav a.active {{ color: var(--red); border-color: transparent; background: rgba(213,0,28,0.10); }}
+    nav a:hover::after, nav a.active::after {{ transform: scaleX(1); }}
     main {{ padding: 34px 0 72px; }}
-    section {{ scroll-margin-top: 74px; margin: 34px 0 56px; opacity: 0; transform: translateY(24px); transition: opacity 700ms ease, transform 700ms ease; }}
+    section {{ position: relative; scroll-margin-top: 74px; margin: 34px 0 56px; opacity: 0; transform: translateY(30px); transition: opacity 700ms ease, transform 700ms ease; }}
     section.visible {{ opacity: 1; transform: translateY(0); }}
+    section > *:not(.section-watermark) {{ position: relative; z-index: 1; }}
+    .section-watermark {{ position: absolute; top: 8px; right: 4px; z-index: 0; color: var(--red); opacity: 0.04; pointer-events: none; }}
     .section-title {{ display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 18px; }}
     h2 {{ font-size: 28px; margin: 0; color: var(--text); position: relative; padding-left: 16px; }}
     h2::before {{ content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; border-radius: 999px; background: var(--red); box-shadow: 0 0 18px rgba(213,0,28,0.62); }}
@@ -499,12 +528,12 @@ def make_dashboard(df: pd.DataFrame) -> str:
     }}
     .kpi-card {{ position: relative; padding: 30px; border: 1px solid rgba(213,0,28,0.34); border-top: 4px solid var(--red); min-height: 214px; overflow: hidden; transition: transform 240ms ease, border-color 240ms ease, box-shadow 240ms ease; }}
     .kpi-card::after {{ content: ""; position: absolute; inset: auto -32px -44px auto; width: 120px; height: 120px; border-radius: 999px; background: rgba(213,0,28,0.16); filter: blur(14px); }}
-    .kpi-card:hover {{ transform: translateY(-6px); border-color: var(--red); box-shadow: 0 26px 72px rgba(213,0,28,0.24), 0 18px 50px rgba(0,0,0,0.38); }}
+    .kpi-card:hover {{ transform: translateY(-6px); border-color: var(--red); box-shadow: 0 0 20px rgba(213,0,28,0.15), 0 26px 72px rgba(213,0,28,0.24), 0 18px 50px rgba(0,0,0,0.38); }}
     .kpi-marker {{ color: var(--gold); font-size: 12px; font-weight: 900; letter-spacing: 0.12em; margin-bottom: 28px; }}
     .kpi-card p {{ margin: 0 0 18px; color: var(--muted); font-size: 13px; text-transform: uppercase; font-weight: 900; }}
     .kpi-card strong {{ display: block; color: var(--red); font-size: clamp(34px, 3.1vw, 52px); line-height: 1; margin-bottom: 16px; text-shadow: 0 0 26px rgba(213,0,28,0.28); }}
     .kpi-card span {{ color: var(--gold); font-size: 13px; line-height: 1.45; }}
-    .chart-card {{ padding: 10px; margin-bottom: 18px; border-color: rgba(213,0,28,0.2); }}
+    .chart-card {{ padding: 10px; margin-bottom: 18px; border-color: rgba(213,0,28,0.2); border-left: 3px solid var(--red); }}
     .chart-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
     details {{
       background: rgba(255,255,255,0.04);
@@ -533,7 +562,8 @@ def make_dashboard(df: pd.DataFrame) -> str:
     .recommendation p {{ color: var(--muted); font-style: italic; line-height: 1.62; margin-bottom: 18px; }}
     .impact-badge {{ display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; color: #06120A; background: var(--green); font-size: 12px; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; }}
     .recommendation strong {{ display: block; color: var(--text); line-height: 1.58; font-weight: 700; }}
-    footer {{ border-top: 1px solid var(--line); padding: 26px 0; color: var(--muted); font-size: 13px; }}
+    footer {{ border-top: 1px solid var(--line); padding: 30px 0 26px; color: var(--muted); font-size: 13px; text-align: center; }}
+    .footer-car {{ display: block; margin: 0 auto 12px; color: var(--red); opacity: 0.6; }}
     @media (prefers-reduced-motion: reduce) {{
       section, .kpi-card, .data-actions a {{ transition: none; }}
     }}
@@ -549,7 +579,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
 <body>
   <header>
     <div class="wrap">
-      <div class="wordmark">PORSCHE</div>
+      <div class="brandline">{header_car}<div class="wordmark">PORSCHE</div></div>
       <h1>Global Performance Intelligence</h1>
       <p class="hero-copy">A synthetic, executive-grade BI dashboard built from Porsche's public delivery history and realistic model, region, revenue, satisfaction, dealer, and powertrain assumptions.</p>
     </div>
@@ -568,6 +598,7 @@ def make_dashboard(df: pd.DataFrame) -> str:
   </nav>
   <main class="wrap">
     <section id="executive">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title">
         <h2>Executive Summary</h2>
         <p>Four board-level signals for 2024: scale, growth, portfolio concentration, and regional momentum.</p>
@@ -576,12 +607,14 @@ def make_dashboard(df: pd.DataFrame) -> str:
     </section>
 
     <section id="sales">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Sales Trend Analysis</h2><p>Model-line performance from 2018 through the 2024 transition year.</p></div>
       <div class="chart-card">{plot_html(trend)}</div>
       <details open><summary>Business Insight</summary><p>{insights["trend"]}</p></details>
     </section>
 
     <section id="regional">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Regional Breakdown</h2><p>Revenue contribution and delivery share show where Porsche's 2024 mix is strongest.</p></div>
       <div class="chart-grid">
         <div class="chart-card">{plot_html(bars)}</div>
@@ -591,24 +624,28 @@ def make_dashboard(df: pd.DataFrame) -> str:
     </section>
 
     <section id="profitability">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Model Profitability Matrix</h2><p>Volume, transaction price, and revenue size plotted in one view.</p></div>
       <div class="chart-card">{plot_html(scatter)}</div>
       <details open><summary>Business Insight</summary><p>{insights["profit"]}</p></details>
     </section>
 
     <section id="electric">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Electric Transition Tracker</h2><p>Powertrain mix and revenue-per-unit economics across ICE, Hybrid, and Electric.</p></div>
       <div class="chart-card">{plot_html(transition)}</div>
       <details open><summary>Business Insight</summary><p>{insights["transition"]}</p></details>
     </section>
 
     <section id="forecasting">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Forecasting</h2><p>Simple linear regression baseline with conservative and optimistic EV adoption scenarios.</p></div>
       <div class="chart-card">{plot_html(forecast)}</div>
       <details open><summary>Business Insight</summary><p>{insights["forecast"]}</p></details>
     </section>
 
     <section id="data-source">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Data & Methodology</h2><p>Transparent source data, generation logic, and field definitions for auditability.</p></div>
       <div class="data-card">
         <p>This dashboard uses a synthetic dataset built from Porsche's publicly reported annual delivery figures for 2018-2024. Model, region, revenue, satisfaction, dealer, powertrain, and forecast values are generated with realistic assumptions so the dashboard can be shared publicly without private company data.</p>
@@ -626,11 +663,12 @@ def make_dashboard(df: pd.DataFrame) -> str:
     </section>
 
     <section id="recommendations">
+      <div class="section-watermark">{section_car}</div>
       <div class="section-title"><h2>Strategic Recommendations</h2><p>Consulting-style actions tied directly to the dashboard evidence.</p></div>
       <div class="recommendations">{recommendation_html}</div>
     </section>
   </main>
-  <footer><div class="wrap">Generated with Python, Pandas, Plotly, and HTML/CSS. Dataset is synthetic and for portfolio/business intelligence demonstration only.</div></footer>
+  <footer><div class="wrap">{footer_car}<div>Generated with Python, Pandas, Plotly, and HTML/CSS. Dataset is synthetic and for portfolio/business intelligence demonstration only.</div></div></footer>
   <script>
     const sections = Array.from(document.querySelectorAll("main section[id]"));
     const navLinks = Array.from(document.querySelectorAll("nav a"));
@@ -654,6 +692,43 @@ def make_dashboard(df: pd.DataFrame) -> str:
 
     sections.forEach((section) => activeObserver.observe(section));
     if (sections[0]) sections[0].classList.add("visible");
+
+    const formatCount = (value, decimals, signed) => {{
+      const fixed = Number(value).toFixed(decimals);
+      const numeric = Number(fixed);
+      const formatted = new Intl.NumberFormat("en-US", {{
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      }}).format(Math.abs(numeric));
+      const sign = signed && numeric > 0 ? "+" : numeric < 0 ? "-" : "";
+      return `${{sign}}${{formatted}}`;
+    }};
+
+    document.querySelectorAll("[data-count-target]").forEach((element) => {{
+      const target = Number(element.dataset.countTarget);
+      const prefix = element.dataset.countPrefix || "";
+      const suffix = element.dataset.countSuffix || "";
+      const decimals = Number(element.dataset.countDecimals || 0);
+      const signed = element.dataset.countSigned === "true";
+      const duration = 1300;
+      const start = performance.now();
+      const finalText = element.textContent;
+
+      const tick = (now) => {{
+        const progress = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const value = target * eased;
+        element.textContent = `${{prefix}}${{formatCount(value, decimals, signed)}}${{suffix}}`;
+        if (progress < 1) {{
+          requestAnimationFrame(tick);
+        }} else {{
+          element.textContent = finalText;
+        }}
+      }};
+
+      element.textContent = `${{prefix}}${{formatCount(0, decimals, signed)}}${{suffix}}`;
+      requestAnimationFrame(tick);
+    }});
   </script>
 </body>
 </html>"""
