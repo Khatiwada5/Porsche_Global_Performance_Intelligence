@@ -2,7 +2,7 @@
 
 ## About
 
-An executive-style Porsche BI dashboard that turns realistic synthetic automotive performance data into a boardroom-ready web experience. The dashboard is designed as a portfolio project demonstrating data generation, KPI analysis, interactive Plotly visualization, strategic storytelling, and static GitHub Pages deployment.
+Executive BI dashboard analyzing Porsche global sales 2018-2024. Built with Python, Pandas, Plotly, HTML/CSS, and GitHub Pages, the project turns synthetic automotive performance data into a boardroom-ready dashboard with KPI cards, regional revenue analysis, model profitability, EV transition tracking, forecasting, and downloadable Excel source data.
 
 **Live Demo:** [Porsche Global Performance Intelligence](https://khatiwada5.github.io/Porsche_Global_Performance_Intelligence/)
 
