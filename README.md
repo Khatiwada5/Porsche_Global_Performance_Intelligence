@@ -1,5 +1,13 @@
 # Porsche Global Performance Intelligence
 
+## About
+
+An executive-style Porsche BI dashboard that turns realistic synthetic automotive performance data into a boardroom-ready web experience. The dashboard is designed as a portfolio project demonstrating data generation, KPI analysis, interactive Plotly visualization, strategic storytelling, and static GitHub Pages deployment.
+
+**Live Demo:** [Porsche Global Performance Intelligence](https://khatiwada5.github.io/Porsche_Global_Performance_Intelligence/)
+
+**Repository:** [Khatiwada5/Porsche_Global_Performance_Intelligence](https://github.com/Khatiwada5/Porsche_Global_Performance_Intelligence)
+
 ## Project Overview
 
 Porsche Global Performance Intelligence is a static Business Intelligence dashboard built with Python, Pandas, Plotly, and HTML/CSS. It generates a realistic synthetic dataset inspired by Porsche's publicly reported delivery figures from 2018 through 2024, then publishes a self-contained `index.html` suitable for GitHub Pages.
@@ -70,4 +78,8 @@ Open `index.html` in a browser. No server or external JavaScript is required bec
 
 ## GitHub Pages
 
-This repo is ready for GitHub Pages. Push the repository to GitHub, then enable Pages from the repository settings with the source set to the main branch root. GitHub Pages will serve `index.html` directly.
+This repo is ready for GitHub Pages. Enable Pages from the repository settings with the source set to the main branch root. GitHub Pages will serve `index.html` directly at:
+
+```text
+https://khatiwada5.github.io/Porsche_Global_Performance_Intelligence/
+```
